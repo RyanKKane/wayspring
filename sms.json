@@ -1,0 +1,21 @@
+{
+    "event": "sms_received",
+    "payload": {
+        "account_id": "string",
+        "object": {
+            "sender": {
+                "phone_number": "555-555-5556"
+            },
+            "message": "string",
+            "attachments": [],
+            "receiver": [{
+                "type": "string",
+                "phone_number": "555-555-5555"
+            }],
+            "session_id": "string",
+            "message_id": "string",
+            "date_time": "YY-MM-DDT:HH:MM:SS"
+        }
+    },
+    "event_ts": "An Int object in milliseconds."
+}

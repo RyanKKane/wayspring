@@ -1,0 +1,22 @@
+AWSTemplateFormatVersion: 2010-09-09
+
+Description: The AWS CloudFormation template for creating DynamoDB Table to store messages sent based on phone_number & time_stamp.
+
+Resources:
+  DynamoDBSentMessageTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      AttributeDefinitions:
+        - AttributeName: phone_number
+          AttributeType: S
+        - AttributeName: time_stamp
+          AttributeType: S
+      BillingMode: PAY_PER_REQUEST
+      KeySchema:
+        - AttributeName: phone_number
+          KeyType: HASH
+        - AttributeName: time_stamp
+          KeyType: RANGE
+      TableName: ddb-AfterHours-MessagesSent
+
+

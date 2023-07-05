@@ -1,0 +1,116 @@
+AWSTemplateFormatVersion: 2010-09-09
+
+Description: Setup CICD pipeline for NuWellness-AfterHours
+
+Resources:
+  CodePipelineProjectInfrastructure:
+    Type: AWS::CodePipeline::Pipeline
+    Properties:
+      Name: cp-AfterHours-Infrastructure
+      ArtifactStore:
+        Location:
+          Fn::ImportValue: AfterHours-S3PipelineBucket
+        Type: S3
+        # Left blank to use default key
+        # EncryptionKey:
+      RestartExecutionOnUpdate: True
+      RoleArn:
+        Fn::ImportValue: AfterHours-CodePipelineRoleArn
+      Stages:
+        - Name: Source
+          Actions:
+            - Name: Source
+              ActionTypeId:
+                Category: Source
+                Owner: AWS
+                Provider: CodeCommit
+                Version: '1'
+              RunOrder: 10
+              OutputArtifacts:
+                - Name: SourceArtifact
+              Configuration:
+                BranchName: master
+                PollForSourceChanges: False
+                RepositoryName:
+                  Fn::ImportValue: AfterHours-CodeCommitRepo
+
+        # Create Stage
+        - Name: Create-AfterHours-Infrastructure
+          Actions:
+            - Name: Create-DynamoDB
+              ActionTypeId:
+                Category: Deploy
+                Owner: AWS
+                Provider: CloudFormation
+                Version: '1'
+              RoleArn:
+                Fn::ImportValue: AfterHours-CodePipelineRoleArn
+              RunOrder: 10
+              InputArtifacts:
+                - Name: SourceArtifact
+              Configuration:
+                ActionMode: CHANGE_SET_REPLACE
+                StackName: cfs-AfterHours-Create-DynamoDB
+                ChangeSetName: cfs-AfterHours-ChangeSet
+                Capabilities: CAPABILITY_NAMED_IAM
+                TemplatePath: SourceArtifact::AppInfrastructure/cfs-AfterHours-Create-DynamoDB.yaml
+                RoleArn:
+                  Fn::ImportValue: AfterHours-CFExecutionRole
+            - Name: Create-Lambda
+              ActionTypeId:
+                Category: Deploy
+                Owner: AWS
+                Provider: CloudFormation
+                Version: '1'
+              RoleArn:
+                Fn::ImportValue: AfterHours-CodePipelineRoleArn
+              RunOrder: 10
+              InputArtifacts:
+                - Name: SourceArtifact
+              Configuration:
+                ActionMode: CHANGE_SET_REPLACE
+                StackName: cfs-AfterHours-Create-Lambda
+                ChangeSetName: cfs-AfterHours-ChangeSet
+                Capabilities: CAPABILITY_NAMED_IAM
+                TemplatePath: SourceArtifact::AppInfrastructure/cfs-AfterHours-Create-Lambda.yaml
+                RoleArn:
+                  Fn::ImportValue: AfterHours-CFExecutionRole       
+
+
+            # EXECUTE Phase
+            - Name: Create-DynamoDB-Execute
+              ActionTypeId:
+                Category: Deploy
+                Owner: AWS
+                Provider: CloudFormation
+                Version: '1'
+              RoleArn:
+                Fn::ImportValue: AfterHours-CodePipelineRoleArn
+              RunOrder: 20
+              InputArtifacts:
+                - Name: SourceArtifact
+              Configuration:
+                ActionMode: CHANGE_SET_EXECUTE
+                StackName: cfs-AfterHours-Create-DynamoDB
+                ChangeSetName: cfs-AfterHours-ChangeSet
+                RoleArn:
+                  Fn::ImportValue: AfterHours-CFExecutionRole
+            - Name: Create-Lambda-Execute
+              ActionTypeId:
+                Category: Deploy
+                Owner: AWS
+                Provider: CloudFormation
+                Version: '1'
+              RoleArn:
+                Fn::ImportValue: AfterHours-CodePipelineRoleArn
+              RunOrder: 20
+              InputArtifacts:
+                - Name: SourceArtifact
+              Configuration:
+                ActionMode: CHANGE_SET_EXECUTE
+                StackName: cfs-AfterHours-Create-Lambda
+                ChangeSetName: cfs-AfterHours-ChangeSet
+                RoleArn:
+                  Fn::ImportValue: AfterHours-CFExecutionRole
+
+

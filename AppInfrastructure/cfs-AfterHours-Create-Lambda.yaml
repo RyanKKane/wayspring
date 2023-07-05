@@ -1,0 +1,35 @@
+AWSTemplateFormatVersion: 2010-09-09
+
+Description: The AWS CloudFormation template for creating Lambda Function to process messages.
+
+Resources:
+  LambdaAfterHours:
+    Type: AWS::Lambda::Function
+    Properties:
+      Handler: lambda_handler
+      Role: !Ref RoleLambdaEX
+      FunctionName: lambda-AfterHours-Messaging
+      PackageType: Zip
+      Runtime: python3.10
+      Code:
+        S3Bucket: !ImportValue AfterHours-S3LambdaBucket
+        S3Key: lambda_deployment_package.zip
+
+  RoleLambdaEX:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: iamr-AfterHours-LambdaEX
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Action: sts:AssumeRole
+            Principal:
+              Service: lambda.amazonaws.com
+      ManagedPolicyArns:
+        - "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+        - "arn:aws:iam::aws:policy/AmazonDynamoDBFullAccess"
+        - "arn:aws:iam::aws:policy/AmazonSNSFullAccess"
+
+
+

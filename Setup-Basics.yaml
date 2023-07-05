@@ -1,0 +1,269 @@
+AWSTemplateFormatVersion: 2010-09-09
+
+Description: Creates CodeCommit Repo for NuWellness-AfterHours
+
+Resources:
+  CodeCommitInfraRepo:
+    Type: AWS::CodeCommit::Repository
+    Properties:
+      RepositoryDescription: Repo for IaC for NuWellness-AfterHours
+      RepositoryName: afterhours-infra
+
+  S3PipelineBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: s3-afterhours-pipeline
+      AccessControl: Private
+      LifecycleConfiguration:
+        Rules:
+          - Id: AfterHours-LccRule1-ExpireAllNoncurrentIn8Days
+            NoncurrentVersionExpirationInDays: 8
+            Prefix: ''
+            Status: Enabled
+      VersioningConfiguration:
+        Status: Enabled
+
+  S3PipelineBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref S3PipelineBucket
+      PolicyDocument:
+        Statement:
+          - Action:
+              - s3:List*
+              - s3:Get*
+              - s3:Put*
+              - s3:Delete*
+              - s3:AbortMultipartUpload
+              - s3:RestoreObject
+              - s3:ListMultipartUploadParts
+            Effect: 'Allow'
+            Resource:
+              - !Sub arn:aws:s3:::${S3PipelineBucket}
+              - !Sub arn:aws:s3:::${S3PipelineBucket}/*
+            Principal:
+              AWS:
+                - !GetAtt RoleCodePipeline.Arn
+
+  S3LambdaBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: s3-afterhours-lambda
+      AccessControl: Private
+      VersioningConfiguration:
+        Status: Enabled
+
+  S3LambdaBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref S3LambdaBucket
+      PolicyDocument:
+        Statement:
+          - Action:
+              - s3:List*
+              - s3:Get*
+              - s3:Put*
+              - s3:Delete*
+              - s3:AbortMultipartUpload
+              - s3:RestoreObject
+              - s3:ListMultipartUploadParts
+            Effect: 'Allow'
+            Resource:
+              - !Sub arn:aws:s3:::${S3PipelineBucket}
+              - !Sub arn:aws:s3:::${S3PipelineBucket}/*
+            Principal:
+              AWS:
+                - !GetAtt RoleCodePipeline.Arn
+
+  RoleCodePipeline:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: iamr-AfterHours-CodePipeline
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Action: sts:AssumeRole
+            Principal:
+              Service: codepipeline.amazonaws.com
+
+  PolicyCodePipeline:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: iamp-AfterHours-CodePipeline
+      Roles:
+        - !Ref RoleCodePipeline
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Sid: KMSPolicy
+            Effect: Allow
+            Action:
+              - kms:DescribeKey
+              - kms:GetKeyPolicy
+              - kms:List*
+              - kms:Encrypt
+              - kms:Decrypt
+              - kms:ReEncrypt*
+              - kms:Generate*
+            Resource:
+              - '*'
+          - Sid: CodeCommitPermissions
+            Effect: Allow
+            Action:
+              - codecommit:GetBranch
+              - codecommit:GetCommit
+              - codecommit:UploadArchive
+              - codecommit:GetUploadArchiveStatus
+              - codecommit:CancelUploadArchive
+            Resource: !Ref CodeCommitInfraRepo
+          - # Allow codepipeline to list buckets
+            Sid: S3BucketPolicy
+            Effect: Allow
+            Action:
+              - s3:GetBucket*
+              - s3:ListBucket*
+            Resource:
+              - !GetAtt S3PipelineBucket.Arn
+          - # Allow codepipeline to put and get objects from codepipeline service buckets
+            Sid: S3ObjectPolicy
+            Effect: Allow
+            Action:
+              - s3:AbortMultipartUpload
+              - s3:GetObject*
+              - s3:PutObject*
+              - s3:DeleteObject*
+              - s3:RestoreObject
+              - s3:ListMultipartUploadParts
+            Resource:
+              - !Sub ${S3PipelineBucket.Arn}/*
+          - # Allow codepipeline to create cloudformation stack
+            Sid: CloudFormationPolicy
+            Effect: Allow
+            Action:
+              - cloudformation:*
+            Resource:
+              - !Sub arn:aws:cloudformation:${AWS::Region}:${AWS::AccountId}:stack/*
+          - Sid: PassRoleToCFExecution
+            Effect: Allow
+            Action:
+              - iam:PassRole
+            Resource: '*'
+
+  RoleCFExecution:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: iamr-AfterHours-CFExecution
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - cloudformation.amazonaws.com
+            Action:
+              - sts:AssumeRole
+
+  # **TODO: This needs adjusted to broad
+  PolicyCFExecution:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: iamp-AfterHours-CFExecution
+      Roles:
+        - !Ref RoleCFExecution
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Sid: IAMRolesPermissions
+            Effect: Allow
+            Action:
+              - iam:Get*
+              - iam:List*
+              - iam:*Role*
+              - iam:CreatePolicy
+              - iam:DeletePolicy
+              - iam:*PolicyVersion*
+              - iam:*InstanceProfile*
+            Resource: '*'
+          - Sid: KMSPermissions
+            Effect: Allow
+            Action:
+              - kms:DescribeKey
+              - kms:GetKeyPolicy
+              - kms:List*
+              - kms:Encrypt
+              - kms:Decrypt
+              - kms:ReEncrypt*
+              - kms:Generate*
+              - kms:*Grant
+              - kms:TagResource
+              - kms:CreateKey
+              - kms:CreateAlias
+              - kms:DeleteAlias
+            Resource: '*'
+          - Sid: AllowFullS3AccessToSCMBuckets
+            Effect: Allow
+            Action:
+              - s3:*
+            Resource:
+              - 'arn:aws:s3:::*'
+              - 'arn:aws:s3:::*/*'
+              - '*'
+          - Sid: DynamoDB
+            Effect: Allow
+            Action:
+              - dynamodb:*
+            Resource:
+              - '*'
+          - Sid: CloudFormation
+            Effect: Allow
+            Action:
+              - cloudformation:*
+            Resource:
+              - '*'
+          - Sid: CodePipeline
+            Effect: Allow
+            Action:
+              - codepipeline:*
+            Resource:
+              - '*'
+
+Outputs:
+  OutNameCodeCommitRepo:
+    Value: !GetAtt CodeCommitInfraRepo.Name
+    Description: Name for CodeCommit Repo
+    Export:
+      Name: AfterHours-CodeCommitRepo
+  OutArnCodeCommitRepo:
+    Value: !GetAtt CodeCommitInfraRepo.Arn
+    Description: ARN for CodeCommit Repo
+    Export:
+      Name: AfterHours-CodeCommitRepoArn
+  OutArnRoleProjectCodePipeline:
+    Value: !GetAtt RoleCodePipeline.Arn
+    Description: ARN for CodePipeline Role
+    Export:
+      Name: AfterHours-CodePipelineRoleArn
+  OutNameS3PipelineBucket:
+    Value: !Ref S3PipelineBucket
+    Description: Name of CodePipeline S3 Bucket
+    Export:
+      Name: AfterHours-S3PipelineBucket
+  OutArnS3PipelineBucket:
+    Value: !GetAtt S3PipelineBucket.Arn
+    Description: ARN of CodePipeline S3 Bucket
+    Export:
+      Name: AfterHours-S3PipelineBucketArn
+  OutNameS3LambdaBucket:
+    Value: !Ref S3LambdaBucket
+    Description: Name of Lambda S3 Bucket
+    Export:
+      Name: AfterHours-S3LambdaBucket
+  OutArnProjectCloudFormationExecutionRole:
+    Value: !GetAtt RoleCFExecution.Arn
+    Description: ARN for CloudFormation Execution Role
+    Export:
+      Name: AfterHours-CFExecutionRole
+
+
+
